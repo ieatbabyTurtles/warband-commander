@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#2a6a3a">
+<title>Warband Commander</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#1a2a1a; font-family:'Trebuchet MS',Verdana,sans-serif; }
+  #game { position:absolute; top:0; left:0; }
+  #hud { position:absolute; top:0; left:0; right:0; display:flex; justify-content:center; gap:8px; padding:8px; pointer-events:none; z-index:5; }
+  .pill { background:rgba(20,30,20,.85); border:2px solid #d4a017; border-radius:20px; padding:6px 12px; color:#fff; font-size:13px; font-weight:bold; white-space:nowrap; }
+  #toast { position:absolute; bottom:90px; left:50%; transform:translateX(-50%); background:rgba(20,30,20,.9); color:#ffe9a8; padding:10px 18px; border-radius:10px; border:1px solid #d4a017; font-size:14px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:20; max-width:90%; text-align:center; }
+  .modal { display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(10,15,10,.7); z-index:10; align-items:center; justify-content:center; padding:16px; }
+  .card { background:linear-gradient(180deg,#fff8e7,#f0e0b8); border:3px solid #8a5a20; border-radius:14px; max-width:420px; width:100%; max-height:86vh; overflow-y:auto; padding:18px; color:#3a2a10; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .card h2 { text-align:center; color:#7a4a10; margin-bottom:4px; font-size:20px; }
+  .card .sub { text-align:center; color:#8a6a40; font-size:12px; margin-bottom:12px; }
+  .portrait { width:90px; height:90px; border-radius:50%; border:3px solid #8a5a20; object-fit:cover; display:block; margin:0 auto 8px; background:#ddd; }
+  .btnrow { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .btn { flex:1; min-width:120px; padding:10px; border-radius:10px; border:2px solid #8a5a20; background:#e8a020; color:#3a2008; font-weight:bold; font-size:13px; cursor:pointer; font-family:inherit; }
+  .btn:active { transform:scale(.96); }
+  .btn.blue { background:#3a7ac0; color:#fff; border-color:#245a90; }
+  .btn.green { background:#4a9a3a; color:#fff; border-color:#2a6a20; }
+  .btn.red { background:#c04a3a; color:#fff; border-color:#902a20; }
+  .btn:disabled { opacity:.45; }
+  .stat { display:flex; justify-content:space-between; padding:5px 2px; font-size:14px; border-bottom:1px dashed #c0a060; }
+  #battle-bars { margin:12px 0; }
+  .bar-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; font-weight:bold; }
+  .bar-row img { width:40px; height:40px; border-radius:50%; border:2px solid #8a5a20; object-fit:cover; }
+  .bar { flex:1; height:18px; background:#d0b880; border-radius:9px; overflow:hidden; border:1px solid #8a5a20; }
+  .bar > div { height:100%; transition:width .3s; }
+  #battle-log { font-size:13px; min-height:60px; background:#fff3d8; border-radius:8px; padding:8px; margin-top:8px; }
+  #menu-btn { position:absolute; top:8px; right:8px; z-index:6; background:rgba(20,30,20,.85); border:2px solid #d4a017; color:#fff; border-radius:10px; padding:8px 12px; font-size:16px; cursor:pointer; }
+  #version { position:absolute; bottom:4px; right:8px; color:rgba(255,255,255,.5); font-size:10px; z-index:5; pointer-events:none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div class="pill">🪙 <span id="h-gold">0</span></div>
+  <div class="pill">🍖 <span id="h-food">0</span></div>
+  <div class="pill">⚔️ <span id="h-troops">0</span></div>
+  <div class="pill">📅 Day <span id="h-day">1</span></div>
+</div>
+<button id="menu-btn">☰</button>
+<div id="toast"></div>
+
+<div class="modal" id="m-settle">
+  <div class="card">
+    <h2 id="s-name">Town</h2>
+    <div class="sub" id="s-sub"></div>
+    <div id="s-body"></div>
+    <div class="btnrow" id="s-btns"></div>
+    <div class="btnrow"><button class="btn" id="s-close">Close</button></div>
+  </div>
+</div>
+
+<div class="modal" id="m-battle">
+  <div class="card">
+    <h2>⚔️ BATTLE ⚔️</h2>
+    <div class="sub" id="b-sub"></div>
+    <div id="battle-bars">
+      <div class="bar-row"><img id="b-img-a" src="assets/knight.webp"><div class="bar"><div id="b-bar-a" style="width:100%;background:#3a7ac0"></div></div><span id="b-num-a"></span></div>
+      <div class="bar-row"><img id="b-img-d" src="assets/warlord.webp"><div class="bar"><div id="b-bar-d" style="width:100%;background:#c04a3a"></div></div><span id="b-num-d"></span></div>
+    </div>
+    <div id="battle-log"></div>
+    <div class="btnrow"><button class="btn green" id="b-continue" style="display:none">Continue</button></div>
+  </div>
+</div>
+
+<div class="modal" id="m-menu">
+  <div class="card">
+    <h2>Warband Commander</h2>
+    <div class="sub">v1 — campaign</div>
+    <div class="btnrow"><button class="btn blue" id="mm-help">How to Play</button></div>
+    <div class="btnrow"><button class="btn red" id="mm-restart">Restart Campaign</button></div>
+    <div class="btnrow"><button class="btn" id="mm-close">Close</button></div>
+    <div id="mm-helptext" style="display:none;font-size:13px;margin-top:10px;line-height:1.6">
+      <b>Tap the map</b> to march your warband there.<br>
+      <b>Tap a settlement</b> to enter: recruit knights (20g) and archers (15g), buy food, rest your troops, collect taxes from places you own.<br>
+      <b>Tap an enemy warband</b> to attack it. Attack enemy garrisons to <b>capture</b> their settlements.<br>
+      Troops eat food over time — starving troops desert! Capture all <b>5 settlements</b> to unite the realm.
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="m-victory">
+  <div class="card" style="text-align:center">
+    <h2>👑 THE REALM IS UNITED! 👑</h2>
+    <div class="sub" id="v-sub"></div>
+    <img src="assets/knight.webp" class="portrait">
+    <p style="font-size:14px">Every castle and town flies your banner. Songs will be sung of this day.</p>
+    <div class="btnrow"><button class="btn green" id="v-continue">Keep Playing</button></div>
+  </div>
+</div>
+
+<div id="version">v1</div>
+
+<script>
+const PAGE_VERSION='v1';
+// ===== WORLD =====
+const WORLD={w:1500,h:1000};
+const SETTLES=[
+  {id:'castle', name:'Emberhold Castle', type:'castle', x:1020, y:375, owner:'enemy', garrison:{knights:8,archers:8}, tax:15},
+  {id:'town',   name:'Millbrook Town',   type:'town',   x:315,  y:800, owner:'player',garrison:{knights:0,archers:0}, tax:10},
+  {id:'vil1',   name:'Oakhollow',         type:'village',x:150,  y:560, owner:'neutral',garrison:{knights:2,archers:3}, tax:5},
+  {id:'vil2',   name:'Riverbend',         type:'village',x:630,  y:700, owner:'neutral',garrison:{knights:2,archers:3}, tax:5},
+  {id:'vil3',   name:'Thornfield',        type:'village',x:1118, y:875, owner:'enemy', garrison:{knights:4,archers:4}, tax:5},
+];
+const ENEMY_NAMES=["Gore's Raiders","The Black Band","Ash Marauders"];
+// ===== STATE =====
+let S=null;
+function defState(){ return { v:1, gold:120, food:60, knights:10, archers:10,
+  px:315, py:860, dest:null, targetEnemy:null,
+  enemies:[
+    {name:ENEMY_NAMES[0], x:1200, y:600, knights:7, archers:6, gold:40, wx:900, wy:500, wt:0},
+    {name:ENEMY_NAMES[1], x:700,  y:300, knights:6, archers:8, gold:35, wx:500, wy:400, wt:0},
+    {name:ENEMY_NAMES[2], x:400,  y:200, knights:8, archers:5, gold:45, wx:600, wy:250, wt:0},
+  ],
+  settles:JSON.parse(JSON.stringify(SETTLES)),
+  day:1, dayT:0, taxT:0, foodT:0, recruitT:0, won:false, msg:[] }; }
+function save(){ try{localStorage.setItem('warbandcmd',JSON.stringify(S));}catch(e){} }
+function load(){ try{const d=JSON.parse(localStorage.getItem('warbandcmd')); if(d&&d.v===1){S=d;return;}}catch(e){} S=defState(); }
+// ===== CANVAS =====
+const cv=document.getElementById('game'), ctx=cv.getContext('2d');
+let cam={x:0,y:0}, VW=0, VH=0;
+const mapImg=new Image(); mapImg.src='assets/map.webp';
+function resize(){ VW=cv.width=window.innerWidth; VH=cv.height=window.innerHeight; }
+window.addEventListener('resize',resize); resize();
+function w2s(x,y){ return [x-cam.x, y-cam.y]; }
+function s2w(x,y){ return [x+cam.x, y+cam.y]; }
+// ===== HELPERS =====
+function toast(t){ const e=document.getElementById('toast'); e.textContent=t; e.style.opacity=1; clearTimeout(e._t); e._t=setTimeout(()=>e.style.opacity=0,2600); }
+function power(kn,ar){ return kn*3+ar*2.2; }
+function troops(){ return S.knights+S.archers; }
+function dist(ax,ay,bx,by){ return Math.hypot(ax-bx,ay-by); }
+// ===== BATTLE =====
+let battleAnim=null;
+function startBattle(enemy, isSettlement){
+  const dName=isSettlement?enemy.name:enemy.name;
+  document.getElementById('b-sub').textContent=(isSettlement?'Assault on ':'Ambush: ')+dName;
+  document.getElementById('b-img-d').src=isSettlement?'assets/warlord.webp':'assets/warlord.webp';
+  document.getElementById('m-battle').style.display='flex';
+  document.getElementById('b-continue').style.display='none';
+  const log=document.getElementById('battle-log'); log.innerHTML='';
+  let ak=S.knights, aa=S.archers;
+  let dk=isSettlement?enemy.garrison.knights:enemy.knights;
+  let da=isSettlement?enemy.garrison.archers:enemy.archers;
+  const dBonus=isSettlement?1.25:1;
+  const aPow0=power(ak,aa), dPow0=power(dk,da)*dBonus;
+  const rounds=14; let r=0;
+  battleAnim=setInterval(()=>{
+    r++;
+    // exchange
+    const aDmg=(power(ak,aa)/Math.max(1,aPow0))*dPow0*0.09;
+    const dDmg=(power(dk,da)*dBonus/Math.max(1,dPow0))*aPow0*0.09*(0.9+Math.random()*0.2);
+    // apply defender losses
+    let dl=dDmg/2.6;
+    const dkL=Math.min(dk,Math.round(dl*dk/Math.max(1,dk+da))), daL=Math.min(da,Math.round(dl*da/Math.max(1,dk+da)));
+    dk-=dkL; da-=daL;
+    // attacker losses
+    let al=aDmg/2.6;
+    const akL=Math.min(ak,Math.round(al*ak/Math.max(1,ak+aa))), aaL=Math.min(aa,Math.round(al*aa/Math.max(1,ak+aa)));
+    ak-=akL; aa-=aaL;
+    const aTot=ak+aa, dTot=dk+da;
+    document.getElementById('b-bar-a').style.width=(100*aTot/Math.max(1,S.knights+S.archers))+'%';
+    document.getElementById('b-bar-d').style.width=(100*dTot/Math.max(1,(isSettlement?enemy.garrison.knights+enemy.garrison.archers:enemy.knights+enemy.archers)))+'%';
+    document.getElementById('b-num-a').textContent=aTot;
+    document.getElementById('b-num-d').textContent=dTot;
+    if(r>=rounds||aTot<=0||dTot<=0){
+      clearInterval(battleAnim); battleAnim=null;
+      const aWin=aTot>0&&(dTot<=0||power(ak,aa)>=power(dk,da)*dBonus*0.9);
+      const lostK=S.knights-ak, lostA=S.archers-aa;
+      S.knights=ak; S.archers=aa;
+      if(aWin){
+        const loot=isSettlement?Math.round(30+Math.random()*40):Math.round(enemy.gold);
+        S.gold+=loot;
+        log.innerHTML=`<b style="color:#2a7a2a">VICTORY!</b><br>Lost ${lostK} knights, ${lostA} archers.<br>Looted <b>${loot} gold</b>.`;
+        if(isSettlement){
+          enemy.owner='player'; enemy.garrison={knights:0,archers:0};
+          log.innerHTML+=`<br><b>${enemy.name} is yours!</b> 🏰`;
+          toast(`🏰 ${enemy.name} captured!`);
+          checkVictory();
+        } else {
+          enemy.knights=0;enemy.archers=0; // destroyed
+          toast(`⚔️ ${enemy.name} destroyed! +${loot}g`);
+        }
+      } else {
+        if(isSettlement){ enemy.garrison.knights=dk; enemy.garrison.archers=da; }
+        else { enemy.knights=dk; enemy.archers=da; }
+        log.innerHTML=`<b style="color:#a02a2a">DEFEAT...</b><br>Lost ${lostK} knights, ${lostA} archers.<br>Your warband retreats!`;
+        toast('⚔️ Defeat... your warband retreats!');
+        // retreat player a bit
+        S.px=Math.max(40,Math.min(WORLD.w-40,S.px-120)); S.py=Math.max(40,Math.min(WORLD.h-40,S.py+60));
+        S.dest=null;
+      }
+      document.getElementById('b-continue').style.display='block';
+      save(); render();
+    }
+  },280);
+  document.getElementById('b-continue').onclick=()=>{ document.getElementById('m-battle').style.display='none'; };
+}
+function checkVictory(){
+  if(S.won) return;
+  if(S.settles.every(s=>s.owner==='player')){
+    S.won=true;
+    document.getElementById('v-sub').textContent=`United on day ${S.day} with ${troops()} troops!`;
+    document.getElementById('m-victory').style.display='flex';
+  }
+}
+// ===== SETTLEMENT MENU =====
+let curSettle=null;
+function openSettle(s){
+  curSettle=s;
+  document.getElementById('s-name').textContent=(s.owner==='player'?'💙 ':s.owner==='enemy'?'❤️ ':'🤍 ')+s.name;
+  document.getElementById('s-sub').textContent=s.type.toUpperCase()+(s.owner==='player'?' — YOURS':s.owner==='enemy'?' — ENEMY':' — NEUTRAL');
+  const g=s.garrison;
+  let html=`<div class="stat"><span>🛡️ Garrison</span><b>${g.knights} knights, ${g.archers} archers</b></div>
+    <div class="stat"><span>💰 Tax</span><b>${s.tax}g / day</b></div>
+    <div class="stat"><span>⚔️ Your warband</span><b>${S.knights} knights, ${S.archers} archers</b></div>`;
+  document.getElementById('s-body').innerHTML=html;
+  const bb=document.getElementById('s-btns'); bb.innerHTML='';
+  const mk=(label,cls,fn,dis)=>{ const b=document.createElement('button'); b.className='btn '+cls; b.textContent=label; b.disabled=!!dis; b.onclick=fn; bb.appendChild(b); };
+  if(s.owner!=='player'&&(g.knights+g.archers>0)){
+    mk('⚔️ Attack!','red',()=>{ document.getElementById('m-settle').style.display='none'; startBattle(s,true); });
+  } else if(s.owner!=='player'){
+    mk('🏳️ Claim','green',()=>{ s.owner='player'; toast(`🏰 ${s.name} claimed!`); checkVictory(); save(); openSettle(s); render(); });
+  }
+  mk('🗡️ Knight 20g','',()=>{ if(S.gold>=20&&troops()<50){S.gold-=20;S.knights++;save();openSettle(s);render();} },S.gold<20||troops()>=50);
+  mk('🏹 Archer 15g','',()=>{ if(S.gold>=15&&troops()<50){S.gold-=15;S.archers++;save();openSettle(s);render();} },S.gold<15||troops()>=50);
+  mk('🍖 Food 8g','blue',()=>{ if(S.gold>=8){S.gold-=8;S.food+=10;save();openSettle(s);render();} },S.gold<8);
+  if(s.owner==='player') mk(`💰 Tax +${s.tax}g`,'green',()=>{ S.gold+=s.tax; s.tax=0; save(); openSettle(s); render(); },s.tax<=0);
+  document.getElementById('m-settle').style.display='flex';
+}
+document.getElementById('s-close').onclick=()=>document.getElementById('m-settle').style.display='none';
+// ===== INPUT =====
+let downPos=null, downT=0;
+cv.addEventListener('pointerdown',e=>{ downPos=[e.clientX,e.clientY]; downT=Date.now(); });
+cv.addEventListener('pointerup',e=>{
+  if(!downPos) return;
+  const moved=Math.hypot(e.clientX-downPos[0],e.clientY-downPos[1]);
+  const dt=Date.now()-downT; downPos=null;
+  if(moved>12||dt>400) return; // was a drag
+  const [wx,wy]=s2w(e.clientX,e.clientY);
+  // enemy warband?
+  for(const en of S.enemies){
+    if(en.knights+en.archers<=0) continue;
+    if(dist(wx,wy,en.x,en.y)<55){ S.targetEnemy=en; S.dest={x:en.x,y:en.y}; toast(`⚔️ Marching to attack ${en.name}!`); return; }
+  }
+  // settlement?
+  for(const s of S.settles){
+    if(dist(wx,wy,s.x,s.y)<70){
+      if(dist(S.px,S.py,s.x,s.y)<90){ openSettle(s); }
+      else { S.dest={x:s.x,y:s.y+40,settle:s}; S.targetEnemy=null; toast(`🚩 Marching to ${s.name}...`); }
+      return;
+    }
+  }
+  S.dest={x:Math.max(20,Math.min(WORLD.w-20,wx)), y:Math.max(20,Math.min(WORLD.h-20,wy))};
+  S.targetEnemy=null;
+});
+// ===== MENU =====
+document.getElementById('menu-btn').onclick=()=>document.getElementById('m-menu').style.display='flex';
+document.getElementById('mm-close').onclick=()=>document.getElementById('m-menu').style.display='none';
+document.getElementById('mm-help').onclick=()=>{ const t=document.getElementById('mm-helptext'); t.style.display=t.style.display==='none'?'block':'none'; };
+document.getElementById('mm-restart').onclick=()=>{ if(confirm('Restart the campaign?')){ S=defState(); save(); document.getElementById('m-menu').style.display='none'; render(); } };
+document.getElementById('v-continue').onclick=()=>document.getElementById('m-victory').style.display='none';
+// ===== GAME LOOP =====
+let lastT=performance.now();
+function loop(t){
+  const dt=Math.min(0.1,(t-lastT)/1000); lastT=t;
+  // movement
+  if(S.dest){
+    const d=dist(S.px,S.py,S.dest.x,S.dest.y);
+    const spd=110-troops()*0.6;
+    if(d<8){
+      const s=S.dest.settle;
+      S.dest=null;
+      if(s) openSettle(s);
+    } else {
+      S.px+=(S.dest.x-S.px)/d*Math.min(d,spd*dt);
+      S.py+=(S.dest.y-S.py)/d*Math.min(d,spd*dt);
+    }
+  }
+  // follow target enemy
+  if(S.targetEnemy&&(S.targetEnemy.knights+S.targetEnemy.archers>0)){
+    S.dest={x:S.targetEnemy.x,y:S.targetEnemy.y};
+    if(dist(S.px,S.py,S.targetEnemy.x,S.targetEnemy.y)<50){
+      const en=S.targetEnemy; S.targetEnemy=null; S.dest=null;
+      startBattle(en,false);
+    }
+  }
+  // enemy AI
+  for(const en of S.enemies){
+    if(en.knights+en.archers<=0) continue;
+    en.wt-=dt;
+    // chase weak player
+    const pd=dist(S.px,S.py,en.x,en.y);
+    if(pd<220&&power(S.knights,S.archers)<power(en.knights,en.archers)*1.3){
+      const sp=80*dt, d=Math.max(1,pd);
+      en.x+=(S.px-en.x)/d*sp; en.y+=(S.py-en.y)/d*sp;
+      if(pd<45){ startBattle(en,false); }
+      continue;
+    }
+    if(en.wt<=0){
+      en.wt=8+Math.random()*10;
+      // wander toward a random settlement (prefer player-owned)
+      const owned=S.settles.filter(s=>s.owner==='player');
+      const tgt=(owned.length&&Math.random()<0.5)?owned[Math.floor(Math.random()*owned.length)]:S.settles[Math.floor(Math.random()*S.settles.length)];
+      en.wx=tgt.x+(Math.random()*80-40); en.wy=tgt.y+(Math.random()*80-40);
+    }
+    const wd=dist(en.x,en.y,en.wx,en.wy);
+    if(wd>10){ const sp=70*dt; en.x+=(en.wx-en.x)/wd*sp; en.y+=(en.wy-en.y)/wd*sp; }
+    // raid player settlements
+    for(const s of S.settles){
+      if(s.owner==='player'&&dist(en.x,en.y,s.x,s.y)<50){
+        // quick raid: steal gold, damage
+        const steal=Math.min(20,Math.round(en.knights*1.5));
+        // (gold is abstracted — just toast + small troop skirmish)
+        en.wx=en.x+200; en.wy=en.y-150; en.wt=12;
+        toast(`🔥 ${en.name} raids ${s.name}!`);
+        break;
+      }
+    }
+  }
+  // economy ticks
+  S.taxT+=dt; S.foodT+=dt; S.dayT+=dt; S.recruitT+=dt;
+  if(S.dayT>180){ S.dayT=0; S.day++; for(const s of S.settles) if(s.owner==='player') s.tax+=s.tax>0?0:(s.type==='castle'?15:s.type==='town'?10:5); }
+  if(S.taxT>30){ S.taxT=0; let inc=0; for(const s of S.settles) if(s.owner==='player') inc+=s.tax;
+    if(inc>0){ /* taxes accumulate in settle; collect via menu */ } }
+  if(S.foodT>20){ S.foodT=0; const eat=Math.ceil(troops()/8); S.food-=eat;
+    if(S.food<0){ S.food=0; if(troops()>0){ if(Math.random()<0.5&&S.knights>0)S.knights--; else if(S.archers>0)S.archers--; toast('🍖 Troops are starving! Buy food!'); } } }
+  if(S.recruitT>60){ S.recruitT=0;
+    // settlements slowly reinforce garrisons
+    for(const s of S.settles){ if(s.owner!=='player'&&(s.garrison.knights+s.garrison.archers)<14){ if(Math.random()<0.5)s.garrison.knights++; else s.garrison.archers++; } }
+    // defeated enemies come back
+    for(const en of S.enemies){ if(en.knights+en.archers<=0&&Math.random()<0.6){ en.knights=5+Math.floor(Math.random()*5); en.archers=4+Math.floor(Math.random()*4); en.x=1300; en.y=200; toast(`⚠️ ${en.name} has regrouped!`); } }
+  }
+  // camera follow
+  cam.x=Math.max(0,Math.min(WORLD.w-VW,S.px-VW/2));
+  cam.y=Math.max(0,Math.min(WORLD.h-VH,S.py-VH/2));
+  draw(); render();
+  save();
+  requestAnimationFrame(loop);
+}
+// ===== DRAW =====
+function draw(){
+  ctx.fillStyle='#2a5a2a'; ctx.fillRect(0,0,VW,VH);
+  if(mapImg.complete) ctx.drawImage(mapImg, -cam.x, -cam.y, WORLD.w, WORLD.h);
+  // settlements
+  for(const s of S.settles){
+    const [sx,sy]=w2s(s.x,s.y);
+    if(sx<-80||sy<-80||sx>VW+80||sy>VH+80) continue;
+    const col=s.owner==='player'?'#3a7ac0':s.owner==='enemy'?'#c04a3a':'#9a9a9a';
+    ctx.beginPath(); ctx.arc(sx,sy,34,0,7); ctx.fillStyle=col+'44'; ctx.fill();
+    ctx.lineWidth=4; ctx.strokeStyle=col; ctx.stroke();
+    ctx.font='bold 13px Trebuchet MS'; ctx.textAlign='center';
+    ctx.fillStyle='#fff'; ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.lineWidth=3;
+    ctx.strokeText(s.name,sx,sy-44); ctx.fillText(s.name,sx,sy-44);
+    ctx.font='12px Trebuchet MS';
+    const gt=`🛡️${s.garrison.knights+s.garrison.archers}`;
+    ctx.strokeText(gt,sx,sy+52); ctx.fillText(gt,sx,sy+52);
+  }
+  // destination flag
+  if(S.dest){ const [dx,dy]=w2s(S.dest.x,S.dest.y);
+    ctx.font='24px serif'; ctx.textAlign='center'; ctx.fillText('🚩',dx,dy-10); }
+  // enemies
+  for(const en of S.enemies){
+    if(en.knights+en.archers<=0) continue;
+    const [ex,ey]=w2s(en.x,en.y);
+    if(ex<-40||ey<-40||ex>VW+40||ey>VH+40) continue;
+    ctx.beginPath(); ctx.arc(ex,ey,20,0,7); ctx.fillStyle='#c04a3a'; ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle='#7a1a10'; ctx.stroke();
+    ctx.font='bold 11px Trebuchet MS'; ctx.fillStyle='#fff'; ctx.textAlign='center';
+    ctx.fillText(en.knights+en.archers,ex,ey+4);
+    ctx.font='11px Trebuchet MS'; ctx.fillStyle='#ffb0a0';
+    ctx.fillText(en.name,ex,ey-28);
+  }
+  // player
+  const [px,py]=w2s(S.px,S.py);
+  ctx.beginPath(); ctx.arc(px,py,22,0,7); ctx.fillStyle='#3a7ac0'; ctx.fill();
+  ctx.lineWidth=4; ctx.strokeStyle='#d4a017'; ctx.stroke();
+  ctx.font='bold 12px Trebuchet MS'; ctx.fillStyle='#fff'; ctx.textAlign='center';
+  ctx.fillText(troops(),px,py+5);
+  ctx.font='bold 12px Trebuchet MS'; ctx.fillStyle='#ffe9a8';
+  ctx.fillText('YOUR WARBAND',px,py-30);
+}
+function render(){
+  document.getElementById('h-gold').textContent=Math.floor(S.gold);
+  document.getElementById('h-food').textContent=Math.floor(S.food);
+  document.getElementById('h-troops').textContent=troops()+'/50';
+  document.getElementById('h-day').textContent=S.day;
+}
+// ===== INIT =====
+load(); render();
+requestAnimationFrame(loop);
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+window.addEventListener('beforeunload',save);
+</script>
+</body>
+</html>
